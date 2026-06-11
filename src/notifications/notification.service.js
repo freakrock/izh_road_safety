@@ -1,126 +1,38 @@
 import { EventModel } from '../models/Event.js';
-import { SubscriberModel } from '../models/Subscriber.js';
-import { NotificationModel } from '../models/Notification.js';
-import { config } from '../config.js';
-
-function formatEventNotification(event) {
-  return [
-    `🚦 ${event.title}`,
-    '',
-    `Зона: ${event.locationText || event.city || config.cityName}`,
-    `Тип: ${event.eventType || 'unknown'}`,
-    '',
-    event.description || '',
-    '',
-    'ℹ️ Соблюдайте ПДД и будьте внимательны.'
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
 
 export async function notifyApprovedEvents(bot) {
-  if (!bot) {
-    return {
-      sent: 0,
-      failed: 0
-    };
-  }
+  if (!bot) return;
 
+  // Ищем события со статусом 'approved', которые еще не были отправлены
   const events = await EventModel.find({
     status: 'approved',
-    notifiedAt: null
-  })
-    .sort({ createdAt: 1 })
-    .limit(10)
-    .lean();
-
-  if (!events.length) {
-    return {
-      sent: 0,
-      failed: 0
-    };
-  }
-
-  const subscribers = await SubscriberModel.find({
-    isActive: true
-  }).lean();
-
-  if (!subscribers.length) {
-    return {
-      sent: 0,
-      failed: 0
-    };
-  }
-
-  let sent = 0;
-  let failed = 0;
+    isNotified: { $ne: true }
+  }).limit(5);
 
   for (const event of events) {
-    const message = formatEventNotification(event);
+    try {
+      const message = `
+🔔 *${event.title}*
 
-    for (const subscriber of subscribers) {
-      const recipientId = subscriber.chatId || subscriber.telegramId;
+📍 Локация: ${event.locationText}
+📝 Тип: ${event.eventType}
+📄 Описание: ${event.description}
 
-      try {
-        await NotificationModel.create({
-          eventId: event._id,
-          channel: 'telegram',
-          recipientId,
-          message,
-          status: 'pending'
-        });
+#ижевск #дпс #безопасность
+      `;
 
-        await bot.telegram.sendMessage(recipientId, message);
+      // Здесь нужно указать ID твоего канала или твой ID
+      // Для теста можно слать админу, если ID сохранен в конфиге
+      const chatId = process.env.TELEGRAM_CHANNEL_ID || process.env.ADMIN_CHAT_ID;
 
-        await NotificationModel.findOneAndUpdate(
-          {
-            eventId: event._id,
-            channel: 'telegram',
-            recipientId
-          },
-          {
-            status: 'sent',
-            sentAt: new Date()
-          }
-        );
-
-        sent += 1;
-      } catch (error) {
-        if (error.code === 11000) {
-          continue;
-        }
-
-        await NotificationModel.findOneAndUpdate(
-          {
-            eventId: event._id,
-            channel: 'telegram',
-            recipientId
-          },
-          {
-            eventId: event._id,
-            channel: 'telegram',
-            recipientId,
-            message,
-            status: 'failed',
-            error: error.message
-          },
-          {
-            upsert: true
-          }
-        );
-
-        failed += 1;
-        console.error('[notification] telegram failed:', error.message);
+      if (chatId) {
+        await bot.telegram.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        
+        event.isNotified = true;
+        await event.save();
       }
+    } catch (e) {
+      console.error('[notifier] ошибка отправки:', e.message);
     }
-
-    await EventModel.findByIdAndUpdate(event._id, {
-      notifiedAt: new Date()
-    });
   }
-
-  return {
-    sent,
-    failed
-  };
 }

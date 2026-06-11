@@ -1,30 +1,28 @@
-// src/test-ingest.js
 import { connectMongo } from './db/mongoose.js';
-import { ingestRawData } from './services/ingest.service.js';
+import { RawPostModel } from './models/RawPost.js';
+import mongoose from 'mongoose';
 
 async function test() {
   await connectMongo();
+  console.log("🛠 Запуск ручного заброса данных...");
 
-  console.log("📥 Имитируем поступление дорожных новостей...");
+  const fakeData = {
+    text: "На перекрестке Пушкинская и 10 лет Октября стоят два экипажа ДПС, проверяют документы и тонировку.",
+    title: "Сообщение из ТГ",
+    hash: "test_hash_" + Date.now(),
+    isProcessed: false
+  };
 
-  // Пример 1: Релевантный пост
-  await ingestRawData({
-    text: "Ижевск! На улице Удмуртская, около ТЦ Флагман, стоят ДПС. Проверяют тонировку у всех подряд.",
-    sourceName: "ТГ Канал Дороги Удмуртии",
-    title: "ДПС Удмуртская"
-  });
+  await RawPostModel.create(fakeData);
 
-  // Пример 2: Мусорный пост (не должен создать событие)
-  await ingestRawData({
-    text: "Куплю диски на Ладу Весту, r16. Писать в личку.",
-    sourceName: "Барахолка 18",
-    title: "Объявление"
-  });
-
-  console.log("✅ Посты добавлены в RawPosts.");
-  console.log("Теперь планировщик (через минуту) превратит их в события и пришлет в ТГ.");
+  console.log("✅ Пост добавлен в базу как RawPost.");
+  console.log("Теперь ProcessorService подхватит его при следующем запуске планировщика.");
   
-  setTimeout(() => process.exit(0), 1000);
+  // Даем время на запись и выходим
+  setTimeout(() => {
+    mongoose.disconnect();
+    process.exit(0);
+  }, 1000);
 }
 
-test();
+test().catch(console.error);
