@@ -1,25 +1,30 @@
+// src/test-ingest.js
 import { connectMongo } from './db/mongoose.js';
 import { ingestRawData } from './services/ingest.service.js';
 
 async function test() {
   await connectMongo();
 
-  console.log("📥 Имитируем получение постов из Telegram...");
+  console.log("📥 Имитируем поступление дорожных новостей...");
 
+  // Пример 1: Релевантный пост
   await ingestRawData({
-    text: "Внимание! На перекрестке Удмуртская и Ленина экипаж ДПС проверяет тонировку. Работают активно.",
-    sourceName: "ИГГС Телеграм",
-    title: "Сообщение от очевидца"
+    text: "Ижевск! На улице Удмуртская, около ТЦ Флагман, стоят ДПС. Проверяют тонировку у всех подряд.",
+    sourceName: "ТГ Канал Дороги Удмуртии",
+    title: "ДПС Удмуртская"
   });
 
+  // Пример 2: Мусорный пост (не должен создать событие)
   await ingestRawData({
-    text: "Продам резину на 16, б/у один сезон. Звоните 8912...",
-    sourceName: "Объявления Ижевск",
+    text: "Куплю диски на Ладу Весту, r16. Писать в личку.",
+    sourceName: "Барахолка 18",
     title: "Объявление"
   });
 
-  console.log("✅ Данные в базе. Жди минуту, планировщик их обработает.");
-  setTimeout(() => process.exit(0), 2000);
+  console.log("✅ Посты добавлены в RawPosts.");
+  console.log("Теперь планировщик (через минуту) превратит их в события и пришлет в ТГ.");
+  
+  setTimeout(() => process.exit(0), 1000);
 }
 
 test();
