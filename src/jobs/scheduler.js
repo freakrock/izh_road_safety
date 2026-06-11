@@ -1,35 +1,29 @@
-import { collectRSSSources } from '../collectors/rss.collector.js';
-import { processPendingPosts } from '../services/processor.service.js'; // Добавили
+import { processPendingPosts } from '../services/processor.service.js';
 import { notifyApprovedEvents } from '../notifications/notification.service.js';
 
 export function startScheduler(bot) {
-  console.log('[scheduler] started');
+  console.log('[scheduler] started (clean mode)');
 
   async function mainJob() {
     try {
-      // 1. Собираем сырые данные
-      const collect = await collectRSSSources();
-      
-      // 2. Сразу обрабатываем их (Комплексная аналитика)
+      // Собираем всё, что упало в базу в сыром виде (из любых источников)
+      // и превращаем в события
       const proc = await processPendingPosts();
       
       if (proc.eventsCreated > 0) {
-        console.log(`[scheduler] processed ${proc.processed} posts, created ${proc.eventsCreated} events`);
+        console.log(`[scheduler] Processed ${proc.processed} posts, created ${proc.eventsCreated} events`);
+        
+        // Сразу рассылаем уведомления по новым подтвержденным событиям
+        await notifyApprovedEvents(bot);
       }
-
-      // 3. Рассылаем то, что подтверждено
-      await notifyApprovedEvents(bot);
-
     } catch (error) {
-      console.error('[scheduler] critical error:', error);
+      console.error('[scheduler] error:', error);
     }
   }
 
-  // Запуск каждые 60 секунд для теста
+  // Запуск каждую минуту
   const timer = setInterval(mainJob, 60_000);
-  mainJob(); // Первый запуск сразу
+  mainJob(); 
 
-  return {
-    stop: () => clearInterval(timer)
-  };
+  return { stop: () => clearInterval(timer) };
 }
