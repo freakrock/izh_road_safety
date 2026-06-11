@@ -2,7 +2,7 @@ import { Telegraf } from 'telegraf';
 import { config } from '../config.js';
 import { SubscriberModel } from '../models/Subscriber.js';
 import { EventModel } from '../models/Event.js';
-import { ingestRawData } from '../services/ingest.service.js'; // Добавили импорт
+import { ingestRawData } from '../services/ingest.service.js';
 
 // Мапинг типов для красивого отображения
 const EVENT_LABELS = {
@@ -22,7 +22,7 @@ function formatEvent(event) {
 
   return [
     `${typeLabel}`,
-    `📍 **${event.locationText || 'Ижевск'}** ${time ? `[${time}]` : ''}`,
+    `📍 *${event.locationText || 'Ижевск'}* ${time ? `[${time}]` : ''}`,
     `──────────────────`,
     `${event.description || ''}`,
     `──────────────────`,
@@ -57,20 +57,21 @@ export function createTelegramBot() {
       { upsert: true }
     );
 
-    await ctx.replyWithMarkdown(
-      `👋 **Привет! Я Маша, твой дорожный ассистент по Ижевску.**\n\n` +
+    await ctx.reply(
+      `👋 *Привет! Я Маша, твой дорожный ассистент по Ижевску.*\n\n` +
       `Я собираю информацию о рейдах ГИБДД и профилактических мероприятиях.\n\n` +
       `🔹 /today — события за последние 24 часа\n` +
-      `🔹 /stop — отключить уведомления`
+      `🔹 /stop — отключить уведомления`,
+      { parse_mode: 'Markdown' }
     );
   });
 
   bot.command('today', async (ctx) => {
     // Берем события за последние 24 часа
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const events = await EventModel.find({ 
+    const events = await EventModel.find({
       status: 'approved',
-      createdAt: { $gte: yesterday } 
+      createdAt: { $gte: yesterday }
     })
     .sort({ createdAt: -1 })
     .limit(10);
@@ -80,33 +81,49 @@ export function createTelegramBot() {
     }
 
     for (const event of events) {
-      await ctx.replyWithMarkdown(formatEvent(event));
+      await ctx.reply(formatEvent(event), { parse_mode: 'Markdown' });
     }
   });
 
-  // --- ПРИЕМ ДАННЫХ (НОВОЕ) ---
-  
-  // Если ты (админ) пересылаешь боту сообщение из ТГ-канала
-  bot.on('text', async (ctx, next) => {
-    // Простейшая проверка: только если сообщение переслано (forwarded)
-    // или если это пишешь ты (можно добавить проверку на твой ID)
-    if (ctx.message.forward_from_chat || ctx.from.id === Number(process.env.ADMIN_TELEGRAM_ID)) {
-       const text = ctx.message.text;
-       
-       const post = await ingestRawData({
-         text,
-         sourceName: ctx.message.forward_from_chat?.title || 'Manual Input',
-         externalLink: ctx.message.forward_from_chat?.username ? `https://t.me/${ctx.message.forward_from_chat.username}` : ''
-       });
+  // --- ПРИЕМ ДАННЫХ ---
 
-       if (post) {
-         return ctx.reply('✅ Данные приняты в обработку. Анализирую...');
-       }
+  bot.on('text', async (ctx, next) => {
+    const text = ctx.message.text;
+    const adminId = Number(process.env.ADMIN_TELEGRAM_ID);
+    
+    // Проверка: сообщение переслано из канала ИЛИ пишет админ напрямую
+    const isForwarded = ctx.message.forward_from_chat || ctx.message.forward_origin;
+    const isAdmin = ctx.from.id === adminId;
+
+    if (isForwarded || isAdmin) {
+      let sourceName = 'Manual Input';
+      let externalLink = '';
+
+      // Пытаемся вытащить данные канала, если это пересылка
+      if (ctx.message.forward_from_chat) {
+        sourceName = ctx.message.forward_from_chat.title || sourceName;
+        if (ctx.message.forward_from_chat.username) {
+          externalLink = `https://t.me/${ctx.message.forward_from_chat.username}`;
+        }
+      }
+
+      const post = await ingestRawData({
+        text,
+        sourceName,
+        externalLink,
+        title: 'Сообщение из Telegram'
+      });
+
+      if (post && isAdmin) {
+        return ctx.reply('✅ Данные приняты в обработку. Анализирую...');
+      }
     }
+    
     return next();
   });
 
-  // Остальные команды...
+  // --- ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ ---
+
   bot.command('stop', async (ctx) => {
     await SubscriberModel.updateOne({ telegramId: String(ctx.from.id) }, { isActive: false });
     ctx.reply('🔕 Уведомления отключены.');
