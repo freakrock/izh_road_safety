@@ -72,9 +72,11 @@ const EventSchema = new mongoose.Schema(
       index: true
     },
 
-    notifiedAt: {
-      type: Date
-    },
+notifiedAt: {
+  type: Date,
+  default: null,
+  index: true
+},
     approvedAt: {
       type: Date
     }

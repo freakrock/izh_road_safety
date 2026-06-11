@@ -9,28 +9,43 @@ const RawPostSchema = new mongoose.Schema(
       index: true
     },
     externalId: {
-      type: String
+      type: String,
+      index: true
     },
     url: {
+      type: String
+    },
+    title: {
       type: String
     },
     text: {
       type: String,
       required: true
     },
+    publishedAt: {
+      type: Date,
+      index: true
+    },
+    rawData: {
+      type: mongoose.Schema.Types.Mixed
+    },
     hash: {
       type: String,
-      required: true,
       unique: true,
       index: true
     },
-    publishedAt: {
-      type: Date
+    isProcessed: {
+      type: Boolean,
+      default: false,
+      index: true
     },
-    fetchedAt: {
-      type: Date,
-      default: Date.now
-    }
+metadata: {
+  isRelevant: Boolean,
+  aiScore: Number,
+  extractedLocation: String,
+  extractedType: String
+}
+
   },
   {
     timestamps: true

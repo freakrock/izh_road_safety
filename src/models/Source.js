@@ -5,35 +5,39 @@ const SourceSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
-      trim: true
+      unique: true,
+      index: true
     },
     type: {
       type: String,
-      enum: ['official', 'media', 'telegram', 'vk', 'rss', 'other'],
-      required: true
+      enum: ['rss', 'telegram', 'vk', 'website'],
+      required: true,
+      index: true
     },
     url: {
       type: String,
-      required: true,
-      trim: true,
-      unique: true
-    },
-    trustLevel: {
-      type: Number,
-      default: 50,
-      min: 0,
-      max: 100
+      required: true
     },
     isActive: {
       type: Boolean,
-      default: true
+      default: true,
+      index: true
+    },
+    parserType: {
+      type: String,
+      default: 'rss'
+    },
+    lastFetchedAt: {
+      type: Date
+    },
+    fetchIntervalMs: {
+      type: Number,
+      default: 300_000
     }
   },
   {
     timestamps: true
   }
 );
-
-SourceSchema.index({ isActive: 1, type: 1 });
 
 export const SourceModel = mongoose.model('Source', SourceSchema);

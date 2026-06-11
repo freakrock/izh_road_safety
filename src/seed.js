@@ -1,45 +1,44 @@
-import 'dotenv/config';
 import { connectMongo } from './db/mongoose.js';
 import { SourceModel } from './models/Source.js';
+import { config } from './config.js';
 
-async function main() {
+async function seed() {
   await connectMongo();
 
   const sources = [
     {
-      name: 'Госавтоинспекция Удмуртии Telegram Public',
-      type: 'telegram',
-      url: 'https://t.me/s/udmgai18',
-      trustLevel: 90,
-      isActive: true
+      name: 'Госавтоинспекция Удмуртии',
+      type: 'rss',
+      url: 'https://18.мвд.рф/rss/',
+      isActive: true,
+      parserType: 'rss',
+      fetchIntervalMs: 300_000
     },
     {
-      name: 'Manual Test Source',
-      type: 'official',
-      url: 'manual://test',
-      trustLevel: 90,
-      isActive: true
+      name: 'МВД России — ДТП/происшествия',
+      type: 'rss',
+      url: 'https://мвд.рф/rss/',
+      isActive: false,
+      parserType: 'rss',
+      fetchIntervalMs: 300_000
     }
   ];
 
-  for (const source of sources) {
-    await SourceModel.findOneAndUpdate(
-      {
-        url: source.url
-      },
-      source,
-      {
-        upsert: true,
-        new: true
-      }
-    );
+  for (const sourceConfig of sources) {
+    const existing = await SourceModel.findOne({ name: sourceConfig.name });
+    if (!existing) {
+      await SourceModel.create(sourceConfig);
+      console.log(`[seed] source created: ${sourceConfig.name}`);
+    } else {
+      console.log(`[seed] source already exists: ${sourceConfig.name}`);
+    }
   }
 
-  console.log('[seed] sources created');
+  console.log('[seed] done');
   process.exit(0);
 }
 
-main().catch((error) => {
-  console.error(error);
+seed().catch((error) => {
+  console.error('[seed] error:', error);
   process.exit(1);
 });

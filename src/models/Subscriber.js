@@ -8,22 +8,26 @@ const SubscriberSchema = new mongoose.Schema(
       unique: true,
       index: true
     },
+    chatId: {
+      type: String,
+      required: true,
+      index: true
+    },
+    username: String,
+    firstName: String,
+    lastName: String,
     city: {
       type: String,
       default: 'Ижевск'
-    },
-    districts: {
-      type: [String],
-      default: []
-    },
-    eventTypes: {
-      type: [String],
-      default: []
     },
     isActive: {
       type: Boolean,
       default: true,
       index: true
+    },
+    lastSeenAt: {
+      type: Date,
+      default: Date.now
     }
   },
   {

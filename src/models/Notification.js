@@ -39,7 +39,10 @@ const NotificationSchema = new mongoose.Schema(
   }
 );
 
-NotificationSchema.index({ eventId: 1, recipientId: 1 });
+NotificationSchema.index(
+  { eventId: 1, recipientId: 1, channel: 1 },
+  { unique: true }
+);
 
 export const NotificationModel = mongoose.model(
   'Notification',

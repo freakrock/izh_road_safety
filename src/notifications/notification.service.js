@@ -1,60 +1,126 @@
 import { EventModel } from '../models/Event.js';
 import { SubscriberModel } from '../models/Subscriber.js';
 import { NotificationModel } from '../models/Notification.js';
+import { config } from '../config.js';
 
-export async function notifyPendingApprovedEvents(bot) {
-  if (!bot) return;
+function formatEventNotification(event) {
+  return [
+    `🚦 ${event.title}`,
+    '',
+    `Зона: ${event.locationText || event.city || config.cityName}`,
+    `Тип: ${event.eventType || 'unknown'}`,
+    '',
+    event.description || '',
+    '',
+    'ℹ️ Соблюдайте ПДД и будьте внимательны.'
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export async function notifyApprovedEvents(bot) {
+  if (!bot) {
+    return {
+      sent: 0,
+      failed: 0
+    };
+  }
 
   const events = await EventModel.find({
     status: 'approved',
-    notifiedAt: { $exists: false }
+    notifiedAt: null
   })
     .sort({ createdAt: 1 })
-    .limit(20);
+    .limit(10)
+    .lean();
+
+  if (!events.length) {
+    return {
+      sent: 0,
+      failed: 0
+    };
+  }
+
+  const subscribers = await SubscriberModel.find({
+    isActive: true
+  }).lean();
+
+  if (!subscribers.length) {
+    return {
+      sent: 0,
+      failed: 0
+    };
+  }
+
+  let sent = 0;
+  let failed = 0;
 
   for (const event of events) {
-    const subscribers = await SubscriberModel.find({
-      isActive: true,
-      city: event.city
-    });
-
-    const message = [
-      `🚦 ${event.title}`,
-      '',
-      `Город: ${event.city}`,
-      event.locationText ? `Зона: ${event.locationText}` : null,
-      '',
-      'Информационное уведомление о дорожной безопасности.',
-      'Соблюдайте ПДД и берегите себя.'
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const message = formatEventNotification(event);
 
     for (const subscriber of subscribers) {
-      try {
-        await bot.telegram.sendMessage(subscriber.telegramId, message);
+      const recipientId = subscriber.chatId || subscriber.telegramId;
 
+      try {
         await NotificationModel.create({
           eventId: event._id,
           channel: 'telegram',
-          recipientId: subscriber.telegramId,
+          recipientId,
           message,
-          status: 'sent',
-          sentAt: new Date()
+          status: 'pending'
         });
+
+        await bot.telegram.sendMessage(recipientId, message);
+
+        await NotificationModel.findOneAndUpdate(
+          {
+            eventId: event._id,
+            channel: 'telegram',
+            recipientId
+          },
+          {
+            status: 'sent',
+            sentAt: new Date()
+          }
+        );
+
+        sent += 1;
       } catch (error) {
-        await NotificationModel.create({
-          eventId: event._id,
-          channel: 'telegram',
-          recipientId: subscriber.telegramId,
-          message,
-          status: 'failed',
-          error: error instanceof Error ? error.message : String(error)
-        });
+        if (error.code === 11000) {
+          continue;
+        }
+
+        await NotificationModel.findOneAndUpdate(
+          {
+            eventId: event._id,
+            channel: 'telegram',
+            recipientId
+          },
+          {
+            eventId: event._id,
+            channel: 'telegram',
+            recipientId,
+            message,
+            status: 'failed',
+            error: error.message
+          },
+          {
+            upsert: true
+          }
+        );
+
+        failed += 1;
+        console.error('[notification] telegram failed:', error.message);
       }
     }
 
-    event.notifiedAt = new Date();
-    await event.save();
+    await EventModel.findByIdAndUpdate(event._id, {
+      notifiedAt: new Date()
+    });
   }
+
+  return {
+    sent,
+    failed
+  };
 }
