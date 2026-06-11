@@ -1,36 +1,29 @@
 import { EventModel } from '../models/Event.js';
 
 export async function notifyApprovedEvents(bot) {
-  if (!bot) return;
-
-  // Ищем события со статусом 'approved', которые еще не были отправлены
-  const events = await EventModel.find({
+  // Ищем события, которые подтверждены, но еще не были разосланы
+  const events = await EventModel.find({ 
     status: 'approved',
-    isNotified: { $ne: true }
+    isNotified: { $ne: true } 
   }).limit(5);
 
   for (const event of events) {
     try {
-      const message = `
-🔔 *${event.title}*
+      const message = `🚨 *${event.title}*\n\n` +
+                      `📍 Локация: ${event.locationText}\n` +
+                      `📝 Суть: ${event.description}\n\n` +
+                      `#${event.eventType} #Ижевск`;
 
-📍 Локация: ${event.locationText}
-📝 Тип: ${event.eventType}
-📄 Описание: ${event.description}
-
-#ижевск #дпс #безопасность
-      `;
-
-      // Здесь нужно указать ID твоего канала или твой ID
-      // Для теста можно слать админу, если ID сохранен в конфиге
-      const chatId = process.env.TELEGRAM_CHANNEL_ID || process.env.ADMIN_CHAT_ID;
-
+      // Здесь ID канала или твой ID (для теста)
+      // В будущем возьмем из конфига или базы подписчиков
+      const chatId = process.env.ADMIN_CHAT_ID; 
+      
       if (chatId) {
         await bot.telegram.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-        
-        event.isNotified = true;
-        await event.save();
       }
+
+      event.isNotified = true;
+      await event.save();
     } catch (e) {
       console.error('[notifier] ошибка отправки:', e.message);
     }

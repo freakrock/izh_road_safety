@@ -1,43 +1,34 @@
-import 'dotenv/config';
-import { buildApp } from './app.js';
-import { connectMongo } from './db/mongoose.js';
-import { config } from './config.js';
-import { createTelegramBot } from './notifications/telegram.bot.js';
-import { startScheduler } from './jobs/scheduler.js';
+import { processPendingPosts } from '../services/processor.service.js';
+import { notifyApprovedEvents } from '../notifications/notification.service.js';
 
-async function main() {
-  await connectMongo();
+export function startScheduler(bot) {
+  console.log('[scheduler] запущен: режим обработки очереди');
 
-  const app = await buildApp();
-
-  const bot = createTelegramBot();
-
-  if (bot) {
-    await bot.launch();
-    console.log('[telegram] bot launched');
+  async function mainJob() {
+    try {
+      // 1. Берем сырые данные (из ТГ/ВК/Тестов) и анализируем их
+      const proc = await processPendingPosts();
+      
+      if (proc.eventsCreated > 0) {
+        console.log(`[scheduler] Обработано постов: ${proc.processed}, Создано событий: ${proc.eventsCreated}`);
+        
+        // 2. Рассылаем уведомления пользователям (если есть бот)
+        if (bot) {
+          await notifyApprovedEvents(bot);
+        }
+      }
+    } catch (error) {
+      console.error('[scheduler] Ошибка в цикле планировщика:', error.message);
+    }
   }
 
-  startScheduler(bot);
+  // Запуск раз в 60 секунд
+  const timer = setInterval(mainJob, 60000);
+  
+  // Первый запуск сразу
+  mainJob();
 
-  await app.listen({
-    port: config.port,
-    host: '0.0.0.0'
-  });
-
-  console.log(`[server] started on port ${config.port}`);
-
-  process.once('SIGINT', () => {
-    if (bot) bot.stop('SIGINT');
-    process.exit(0);
-  });
-
-  process.once('SIGTERM', () => {
-    if (bot) bot.stop('SIGTERM');
-    process.exit(0);
-  });
+  return {
+    stop: () => clearInterval(timer)
+  };
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
